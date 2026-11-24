@@ -29,6 +29,9 @@ class Renderer:
         self.controls_hint = hint_font.render(
             "Esc — пауза    R — рестарт", True, TEXT_COLOR
         )
+        self.restart_hint = hint_font.render(
+            "R — новая партия", True, TEXT_COLOR
+        )
         self.menu_rect = pygame.Rect(0, 0, 300, 290)
         self.menu_rect.center = screen.get_rect().center
         self.menu_title = self.font.render("Пауза", True, TEXT_COLOR)
@@ -58,7 +61,7 @@ class Renderer:
         )
 
     def draw(self, game):
-        """Нарисовать кирпичи, ракетку, шарик и начальные счётчики."""
+        """Нарисовать поле, актуальные счётчики и меню состояния игры."""
         self.screen.fill(BACKGROUND_COLOR)
         pygame.draw.rect(
             self.screen, (190, 190, 190), self.screen.get_rect(), width=1
@@ -89,27 +92,41 @@ class Renderer:
             topright=(self.screen.get_width() - 20, 20)
         ))
         hint = self.controls_hint if game.launched else self.launch_hint
+        if game.result is not None:
+            hint = self.restart_hint
         self.screen.blit(hint, hint.get_rect(
             midbottom=(
                 self.screen.get_width() // 2,
                 self.screen.get_height() - 8,
             )
         ))
-        if game.paused:
-            self._draw_menu()
+        if game.paused or game.result is not None:
+            self._draw_menu(game)
 
-    def _draw_menu(self):
-        """Нарисовать меню паузы и кнопки поверх игрового поля."""
+    def _draw_menu(self, game):
+        """Нарисовать меню паузы или результат завершённой партии."""
         self.screen.blit(self.menu_shade, (0, 0))
         pygame.draw.rect(self.screen, (28, 28, 28), self.menu_rect)
         pygame.draw.rect(
             self.screen, BORDER_COLOR, self.menu_rect, width=1
         )
-        self.screen.blit(self.menu_title, self.menu_title.get_rect(
+        title = self.menu_title
+        if game.result is not None:
+            text = "Победа!" if game.result == "won" else "Игра окончена"
+            title = self.font.render(text, True, TEXT_COLOR)
+            score = self.font.render(
+                f"Ваш счёт: {game.score}", True, TEXT_COLOR
+            )
+            self.screen.blit(score, score.get_rect(
+                center=self.menu_buttons["resume"].center
+            ))
+        self.screen.blit(title, title.get_rect(
             center=(self.menu_rect.centerx, self.menu_rect.top + 32)
         ))
         mouse = pygame.mouse.get_pos()
         for action, rect in self.menu_buttons.items():
+            if action == "resume" and game.result is not None:
+                continue
             color = (85, 85, 85) if rect.collidepoint(mouse) else (50, 50, 50)
             pygame.draw.rect(self.screen, color, rect, border_radius=4)
             label = self.menu_labels[action]

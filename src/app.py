@@ -11,7 +11,7 @@ def handle_event(event, game, renderer):
     if event.type == pygame.QUIT:
         return False
     if event.type == pygame.KEYDOWN and not getattr(event, "repeat", False):
-        if event.key == pygame.K_ESCAPE:
+        if event.key == pygame.K_ESCAPE and game.result is None:
             game.paused = not game.paused
         elif event.key == pygame.K_r:
             game.restart()
@@ -20,8 +20,10 @@ def handle_event(event, game, renderer):
     if event.type == pygame.MOUSEMOTION:
         game.move_paddle(event.pos[0])
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-        if game.paused:
+        if game.paused or game.result is not None:
             for action, rect in renderer.menu_buttons.items():
+                if action == "resume" and game.result is not None:
+                    continue
                 if rect.collidepoint(event.pos):
                     if action == "exit":
                         return False

@@ -91,10 +91,11 @@ class Game:
         self.lives = INITIAL_LIVES
         self.launched = False
         self.paused = False
+        self.result = None
 
     def move_paddle(self, center_x):
         """Переместить центр ракетки, ограничив её границами поля."""
-        if self.paused:
+        if self.paused or self.result is not None:
             return
         self.paddle.x = max(
             0.0,
@@ -106,7 +107,7 @@ class Game:
 
     def launch(self):
         """Однократно запустить шарик с текущего положения над ракеткой."""
-        if self.launched or self.paused:
+        if self.launched or self.paused or self.result is not None:
             return
         angle = math.radians(BALL_LAUNCH_ANGLE)
         self.ball.vx = BALL_SPEED * math.cos(angle)
@@ -115,7 +116,7 @@ class Game:
 
     def update(self, elapsed, direction=0):
         """Переместить ракетку и запущенный шарик за прошедшее время."""
-        if self.paused:
+        if self.paused or self.result is not None:
             return
         center = self.paddle.x + self.paddle.width / 2
         self.move_paddle(
@@ -131,6 +132,23 @@ class Game:
                 self._bounce_walls()
                 self._bounce_paddle()
                 self._hit_brick()
+                if self.result is not None:
+                    break
+                if self.ball.y - self.ball.radius >= WINDOW_SIZE[1]:
+                    self._lose_life()
+                    break
+
+    def _lose_life(self):
+        """Снять жизнь и подготовить следующий запуск или завершить партию."""
+        self.lives -= 1
+        self.launched = False
+        if self.lives == 0:
+            self.result = "lost"
+            return
+        self.ball = Ball(
+            self.paddle.x + self.paddle.width / 2,
+            self.paddle.y - BALL_RADIUS - BALL_PADDLE_GAP,
+        )
 
     def _bounce_walls(self):
         """Отразить шарик от боковых стен и потолка."""
@@ -198,4 +216,8 @@ class Game:
                 ball.vx -= 2 * projection * nx
                 ball.vy -= 2 * projection * ny
             self.bricks.pop(index)
+            self.score += 1
+            if not self.bricks:
+                self.result = "won"
+                self.launched = False
             break
