@@ -10,6 +10,7 @@ MAX_FRAME_TIME = 0.05  # Максимальный шаг движения при
 PADDLE_SPEED = 420  # Скорость ракетки в пикселях в секунду.
 BALL_SPEED = 300  # Скорость шарика в пикселях в секунду.
 BALL_LAUNCH_ANGLE = -70  # Угол запуска относительно оси X в градусах.
+PADDLE_BOUNCE_ANGLE = 60  # Максимальный угол отскока от вертикали.
 PADDLE_WIDTH = 88  # Ширина ракетки в пикселях.
 PADDLE_HEIGHT = 16  # Высота ракетки в пикселях.
 PADDLE_BOTTOM_MARGIN = 40  # Расстояние от ракетки до нижнего края.
@@ -57,7 +58,7 @@ class Brick:
 
 
 class Game:
-    """Хранить начальное состояние игрового поля."""
+    """Хранить состояние поля и рассчитывать движение и столкновения."""
 
     def __init__(self):
         """Создать новую партию."""
@@ -121,5 +122,80 @@ class Game:
             center + max(-1, min(1, direction)) * PADDLE_SPEED * elapsed
         )
         if self.launched:
-            self.ball.x += self.ball.vx * elapsed
-            self.ball.y += self.ball.vy * elapsed
+            # Малые шаги не дают шарику пролетать сквозь тонкие кирпичи.
+            distance = math.hypot(self.ball.vx, self.ball.vy) * elapsed
+            steps = max(1, math.ceil(distance / (self.ball.radius / 2)))
+            for _ in range(steps):
+                self.ball.x += self.ball.vx * elapsed / steps
+                self.ball.y += self.ball.vy * elapsed / steps
+                self._bounce_walls()
+                self._bounce_paddle()
+                self._hit_brick()
+
+    def _bounce_walls(self):
+        """Отразить шарик от боковых стен и потолка."""
+        ball = self.ball
+        if ball.x < ball.radius:
+            ball.x = ball.radius
+            ball.vx = abs(ball.vx)
+        elif ball.x > WINDOW_SIZE[0] - ball.radius:
+            ball.x = WINDOW_SIZE[0] - ball.radius
+            ball.vx = -abs(ball.vx)
+        if ball.y < ball.radius:
+            ball.y = ball.radius
+            ball.vy = abs(ball.vy)
+
+    def _bounce_paddle(self):
+        """Отбить падающий шарик, учитывая место попадания в ракетку."""
+        ball = self.ball
+        paddle = self.paddle
+        if ball.vy <= 0 or ball.y > paddle.y:
+            return
+        if self._contact(paddle) is None:
+            return
+        # У центра отскок вертикальный, у краёв — под углом до 60°.
+        offset = (ball.x - paddle.x - paddle.width / 2) / (paddle.width / 2)
+        angle = math.radians(max(-1, min(1, offset)) * PADDLE_BOUNCE_ANGLE)
+        speed = math.hypot(ball.vx, ball.vy)
+        ball.vx = speed * math.sin(angle)
+        ball.vy = -speed * math.cos(angle)
+        ball.y = paddle.y - ball.radius
+
+    def _contact(self, rectangle):
+        """Вернуть нормаль и глубину пересечения круга с прямоугольником."""
+        ball = self.ball
+        closest_x = max(rectangle.x, min(ball.x, rectangle.x + rectangle.width))
+        closest_y = max(rectangle.y, min(ball.y, rectangle.y + rectangle.height))
+        dx, dy = ball.x - closest_x, ball.y - closest_y
+        distance = math.hypot(dx, dy)
+        if distance > ball.radius:
+            return None
+        if distance > 0:
+            return dx / distance, dy / distance, ball.radius - distance
+        # Если центр внутри блока, вытолкнуть его через ближайшую грань.
+        edges = (
+            (ball.x - rectangle.x, -1, 0),
+            (rectangle.x + rectangle.width - ball.x, 1, 0),
+            (ball.y - rectangle.y, 0, -1),
+            (rectangle.y + rectangle.height - ball.y, 0, 1),
+        )
+        depth, nx, ny = min(edges, key=lambda edge: edge[0])
+        return nx, ny, ball.radius + depth
+
+    def _hit_brick(self):
+        """Разрушить задетый кирпич и отразить шарик от его поверхности."""
+        ball = self.ball
+        for index, brick in enumerate(self.bricks):
+            contact = self._contact(brick)
+            if contact is None:
+                continue
+            nx, ny, depth = contact
+            ball.x += nx * (depth + 0.001)
+            ball.y += ny * (depth + 0.001)
+            # Отражение v' = v - 2(v·n)n сохраняет модуль скорости.
+            projection = ball.vx * nx + ball.vy * ny
+            if projection < 0:
+                ball.vx -= 2 * projection * nx
+                ball.vy -= 2 * projection * ny
+            self.bricks.pop(index)
+            break
